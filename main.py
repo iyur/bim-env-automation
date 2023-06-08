@@ -1,6 +1,9 @@
 import argparse
-import source
 import json
+import source
+import time
+
+start_time = time.time()
 
 cmd = argparse.ArgumentParser()
 cmd.add_argument('-t', '--token', required=True, help='Notion Token')
@@ -19,6 +22,27 @@ core = source.Core(arg.token)
 
 core.fetch()
 
+# query = {
+# 	"filter": {
+# 		"property": "Name",
+# 		"rich_text": {
+# 			"equals": 'testi2323ng'
+# 		},
+# 	}
+# }
+
+
+# # print(json.dumps(core.cms.addPage('testing'), indent = 4))
+# test = core.cms.search(query)
+
+# if test:
+# 	print(json.dumps(test, indent = 4))
+# else:
+# 	print('none')
+# for i in range (1,26):
+# 	print(json.dumps(core.cms.search(query), indent = 4))
+
+print("\n%s sec" % (time.time() - start_time))
 
 # no.addPage('ac2e2d746b5945b8bb2ab884b7600f5a')
 

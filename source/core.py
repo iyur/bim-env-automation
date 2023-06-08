@@ -8,7 +8,7 @@ class Core:
 
 		self.cms = Notion(token)
 		self.cde = CDE()
-		
+
 		self.cde.cms = self.cms
 
 	def fetch(self, path='W:/', filter=r'^[_#!1-9]'):

@@ -1,5 +1,8 @@
-import requests
 import json
+import requests
+import time
+
+mt = 3
 
 class Notion:
 
@@ -14,11 +17,24 @@ class Notion:
 
 		self.dbId = 'ac2e2d746b5945b8bb2ab884b7600f5a'
 
+
+	@staticmethod
+	def process_response(response, json=True):
+		has_content = response.content is not None and len(response.content)
+		if response.ok:
+			if has_content:
+				return response.json() if json else response.content
+			else:
+				return None
+		raise Exception(response)
+
+
 	def getDatabase(self, id):
 		url = 'https://api.notion.com/v1/databases/' + id + '/query'
 		response = requests.post(url, headers=self.headers)
 
 		return response.json()
+
 
 	def getPage(self, id):
 
@@ -26,6 +42,7 @@ class Notion:
 		response = requests.get(url, headers=self.headers)
 
 		return response.json()
+
 
 	def addPage(self, name, type='Item', pid=False, date=None):
 
@@ -74,13 +91,41 @@ class Notion:
 		if pid:
 			schema["properties"]["Parent"]["relation"].append({"id": pid})
 
-		response = requests.post(url, json=schema, headers=self.headers)
+		# response = requests.post(url, json=schema, headers=self.headers)
+		# result = self.process_response(response)
 
-		return response.json()
+		for t in range(mt):
+			try:
+				response = requests.post(url, json=schema, headers=self.headers)
+				if response.ok:
+					result = self.process_response(response)
+					return result
+			except:
+				if response.status_code == 504:
+					print('error 504 occured')
+				pass
+		raise Exception(response)
+
+		# return result
+
 
 	def search(self, query):
 
 		url = 'https://api.notion.com/v1/databases/' + self.dbId +'/query'
-		response = requests.post(url, json=query, headers=self.headers)
 
-		return response.json()['results']
+		# response = requests.post(url, json=query, headers=self.headers)
+		# result = self.process_response(response)
+
+		for t in range(mt):
+			try:
+				response = requests.post(url, json=query, headers=self.headers)
+				if response.ok:
+					result = self.process_response(response)
+					return result['results']
+			except:
+				if response.status_code == 504:
+					print('error 504 occured')
+				pass
+		raise Exception(response)
+
+		# return result['results']
