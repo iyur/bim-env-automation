@@ -1,11 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from colorama import init as color #
+from colorama import Fore, Style #
 import json
 import math
 import re
 import os
+import sys #
+import subprocess #
 import time
 
-to = 10
+color()
 
 class CDE:
 
@@ -13,271 +17,126 @@ class CDE:
 
 		self.cms = None
 
-		self.filter = {}
-		self.filter['merged'] = r"(\d{2}-|##-|ZZ-|XX-)"
+		self.filters = {}
+		self.filters['projects'] = r'^[_#!1-9]'
+		self.filters['temp'] = r'^(?:AVR)$'
+
+		self.options = {}
+		self.options['depth'] = 5 # level of aggregation depth (0: PRJ | 1: STATUS | 2: STAGE | 3: GROUP | 4: ROLE | 5:Folder )
 
 
-	def fetchProjectData(self, path, filter):
+	# C:\\Users\\i.yurasov\\Desktop\\dev\\bimcloud-api-old
+	def fetchProjects(self, path='W:\\', extract=True):
 
-		for prj in os.listdir(path):
-			if not re.match(filter, prj) and os.path.isdir(os.path.join(path, prj)):
+		for p in os.listdir(path):
+			if re.match(self.filters['temp'], p):
+				if os.path.isdir(os.path.join(path, p)) and extract:
+					self.fetchFolder(os.path.join(path, p))
 
-				query = {
-					"filter": {
-						"property": "Name",
+
+	def fetchFolder(self, path):
+
+		print('Get path ' + Fore.YELLOW + '\"' + path + '\"' + Style.RESET_ALL)
+		print('Retrieving stored entries by the given path...', end=' ', flush=True)
+
+		q1 = {
+			"filter": {
+				"and": [
+					{
+						"property": "Path",
 						"rich_text": {
-							"equals": prj
+							"contains": path
 						},
 					}
-				}
-
-				result = self.cms.search(query)
-
-				if result:
-					pid = result[0]['id']
-					print(str(time.time()) + ' ' + prj + ': exists')
-				else:
-					result = self.cms.addPage(prj, 'Project')
-					if isinstance(result, dict):
-						t = time.time()
-						while 'id' not in result:
-							if time.time() - t > to:
-								break
-							time.sleep(1)
-					pid = result['id']
-					print(str(time.time()) + ' ' + prj + ': added')
-
-				self.fetchZoneData(os.path.join(path, prj), pid)
-
-
-
-	# path:	string,filesystem path to the item
-	# pid:	string, parent project id in cms
-	def fetchZoneData(self, path, pid):
-
-		statuses = {
-		   #'INC': '00-Inc',
-		   #'RES': '00-Res',
-			'WIP': '01-WiP',
-			'SHA': '02-Sha',
-			'PUB': '03-Pub'
+				]
+			}
 		}
 
-		for s in statuses:
-			if os.path.isdir(os.path.join(path, statuses[s])):
+		# performance
+		# it's better to retrieve a full list of db entries to work within the lists later
+		entries = self.cms.search(q1)
+		if entries: print(Fore.YELLOW + str(len(entries)) + Style.RESET_ALL + ' items found')
+		time.sleep(1)
 
-				query = {
-					"filter": {
-						"and": [
-							{
-								"property": "Name",
-								"rich_text": {
-									"equals": s
-								},
-							},
-							{
-								"property": "Parent",
-								"relation": {
-									"contains": pid
-								}
-							}
-						]
-					}
-				}
+		stats = {
+			path: {
+				'size': 0,		# filesize in bytes
+				'files': 0,		# files found
+				'mt': 0,		# modification time
+				'nid': ''		# notion id
+			}
+		}
 
-				result = self.cms.search(query)
+		# let's parse the given path
+		for root, dirs, files in os.walk(path, topdown=False):
+			for f in files:
+				fp = os.path.join(root, f)
+				if root not in stats: stats[root] = {'size': 0, 'files': 0, 'mt': 0}
 
-				if result:
-					sid = result[0]['id']
-					print(str(time.time()) + ' ' + path + '/' + statuses[s] + ' exists')
+				stats[root]['files'] += 1
+				stats[root]['size'] += os.path.getsize(fp)
+				if stats[root]['mt'] < os.path.getmtime(fp):
+					stats[root]['mt'] = os.path.getmtime(fp)
+				# print('[' + root + '] file: ' + f)
+
+			for d in dirs:
+				dp = os.path.join(root, d)
+				if root not in stats: stats[root] = { 'size': 0, 'files': 0, 'mt': 0}
+				if os.path.join(root, d) not in stats: stats[dp]['size'] = 0
+
+				stats[root]['size'] += stats[dp]['size']
+				stats[root]['files'] += stats[dp]['files']
+				if stats[root]['mt'] < stats[dp]['mt']:
+					stats[root]['mt'] = stats[dp]['mt']
+				# print('dir: ' + d + ' (' + str(stats['size'][os.path.join(root, d)]) + ')')
+
+			depth = root[len(path) + len(os.path.sep):].count(os.path.sep)
+			if root not in stats: stats[root] = {'size': 0, 'files': 0, 'mt': 0}
+			if os.path.isdir(root) and stats[root]['size'] > 0 and depth < self.options['depth']:
+
+				print('Processing: ' + os.path.dirname(root) + ', \"' + os.path.basename(root) + '\" ...', end=' ', flush=True)
+
+				# todo: filters
+
+				childs = {'base':[], 'over':[]}
+				n = 0
+
+				for i in os.listdir(root):
+					if i and os.path.isdir(os.path.join(root, i)) and depth < self.options['depth'] - 1:
+						if os.path.join(root, i) in stats and stats[os.path.join(root, i)]['size'] > 0 and 'nid' in stats[os.path.join(root, i)]:
+							n += 1
+							if n < 100: # notion limitation
+								childs['base'].append({"id": stats[os.path.join(root, i)]['nid']})
+							else:
+								childs['over'].append({"id": stats[os.path.join(root, i)]['nid']})
+
+				# search in retrieved entries
+				search = [e for e in entries if e['properties']['Name']['title'][0]['plain_text'] == os.path.basename(root) and e['properties']['Path']['rich_text'][0]['plain_text'] == root]
+
+				if search and len(search) > 0:
+					if not 'nid' in stats[root]: stats[root]['nid'] = search[0]['id']
+					# reasons to update
+					if (search[0]['properties']['Files']['number'] != stats[root]['files'] or
+						search[0]['properties']['Size']['number'] != stats[root]['size'] or
+						search[0]['properties']['Mtime']['number'] != stats[root]['mt'] or
+						set(map(lambda x: frozenset(x.items()), search[0]['properties']['Sub']['relation'])) != set(map(lambda x: frozenset(x.items()), childs['base']+childs['over']))): # subs
+
+						# batch update the first 100, then each sub
+						update = self.cms.update(search[0]['id'], path = root, files = stats[root]['files'], size = stats[root]['size'], mtime = stats[root]['mt'], childs = childs['base'])
+						if len(childs['over']) > 0:
+							for child in childs['over']:
+								u = self.cms.update(child['id'], root = [{'id': search[0]['id']}])
+						print(Fore.GREEN + 'upd' + Style.RESET_ALL)
+					
+					else:
+						print(Fore.CYAN + 'skip' + Style.RESET_ALL)
+				
 				else:
-					result = self.cms.addPage(s, 'Status', pid)
-					if isinstance(result, dict):
-						t = time.time()
-						while 'id' not in result:
-							if time.time() - t > to:
-								break
-							time.sleep(1)
-					sid = result['id']
-					print(str(time.time()) + ' ' + path + '/' + statuses[s] + ' added')
-
-				self.fetchStageData(os.path.join(path, statuses[s]), sid)
-
-
-	# sid:	string, parent status zone id in cms
-	def fetchStageData(self, path, sid):
-
-		for s in os.listdir(path):
-			if os.path.isdir(os.path.join(path, s)):
-
-				stage = s
-				if re.search(self.filter['merged'], s):
-					res = s.split('-')
-					stage = res[1]
-
-				query = {
-					"filter": {
-						"and": [
-							{
-								"property": "Name",
-								"rich_text": {
-									"equals": stage
-								},
-							},
-							{
-								"property": "Parent",
-								"relation": {
-									"contains": sid
-								}
-							}
-						]
-					}
-				}
-
-				result = self.cms.search(query)
-
-				if result:
-					eid = result[0]['id']
-					print(str(time.time()) + ' ' + path + '/' + s + ' exists')
-				else:
-					result = self.cms.addPage(stage, 'Stage', sid)
-					if isinstance(result, dict):
-						t = time.time()
-						while 'id' not in result:
-							if time.time() - t > to:
-								break
-							time.sleep(1)
-					eid = result['id']
-					print(str(time.time()) + ' ' + path + '/' + s + ' added')
-
-				self.fetchGroupData(os.path.join(path, s), eid)
-
-
-	# eid:	string, parent stage (epic) id in cms
-	def fetchGroupData(self, path, eid):
-
-		for g in os.listdir(path):
-			if os.path.isdir(os.path.join(path, g)):
-
-				query = {
-					"filter": {
-						"and": [
-							{
-								"property": "Name",
-								"rich_text": {
-									"equals": g
-								},
-							},
-							{
-								"property": "Parent",
-								"relation": {
-									"contains": eid
-								}
-							}
-						]
-					}
-				}
-
-				result = self.cms.search(query)
-
-				if result:
-					gid = result[0]['id']
-					print(str(time.time()) + ' ' + path + '/' + g + ' exists')
-				else:
-					result = self.cms.addPage(g, 'Group', eid)
-					if isinstance(result, dict):
-						t = time.time()
-						while 'id' not in result:
-							if time.time() - t > to:
-								break
-							time.sleep(1)
-					gid = result['id']
-					print(str(time.time()) + ' ' + path + '/' + g + ' added')
-
-				self.fetchRoleData(os.path.join(path, g), gid)
-
-
-	# gid:	string, parent group id in cms
-	def fetchRoleData(self, path, gid):
-
-		for r in os.listdir(path):
-			if os.path.isdir(os.path.join(path, r)):
-
-				query = {
-					"filter": {
-						"and": [
-							{
-								"property": "Name",
-								"rich_text": {
-									"equals": r
-								},
-							},
-							{
-								"property": "Parent",
-								"relation": {
-									"contains": gid
-								}
-							}
-						]
-					}
-				}
-
-				result = self.cms.search(query)
-
-				if result:
-					rid = result[0]['id']
-					print(str(time.time()) + ' ' + path + '/' + r + ' exists')
-				else:
-					result = self.cms.addPage(r, 'Role', gid)
-					if isinstance(result, dict):
-						t = time.time()
-						while 'id' not in result:
-							if time.time() - t > to:
-								break
-							time.sleep(1)
-					rid = result['id']
-					print(str(time.time()) + ' ' + path + '/' + r + ' added')
-
-				self.fetchFolderData(os.path.join(path, r), rid)
-
-
-	# rid:	string, parent role id in cms
-	def fetchFolderData(self, path, rid):
-
-		for f in os.listdir(path):
-			if os.path.isdir(os.path.join(path, f)):
-
-				query = {
-					"filter": {
-						"and": [
-							{
-								"property": "Name",
-								"rich_text": {
-									"equals": f
-								},
-							},
-							{
-								"property": "Parent",
-								"relation": {
-									"contains": rid
-								}
-							}
-						]
-					}
-				}
-
-				result = self.cms.search(query)
-
-				if result:
-					fid = result[0]['id']
-					print(str(time.time()) + ' ' + path + '/' + f + ' exists')
-				else:
-					result = self.cms.addPage(f, 'Folder', rid)
-					if isinstance(result, dict):
-						t = time.time()
-						while 'id' not in result:
-							if time.time() - t > to:
-								break
-							time.sleep(1)
-					fid = result['id']
-					print(str(time.time()) + ' ' + path + '/' + f + ' added')
+					response = self.cms.addPage(os.path.basename(root), path=root, files = stats[root]['files'], size = stats[root]['size'], mtime = stats[root]['mt'], childs = childs['base'])
+					if response:
+						stats[root]['nid'] = response['id']
+						# batch update the first 100, then each sub
+						if len(childs['over']) > 0:
+							for child in childs['over']:
+								u = self.cms.update(child['id'], root = [{'id': response['id']}])
+						print(Fore.YELLOW + 'add' + Style.RESET_ALL)
