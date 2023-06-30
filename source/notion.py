@@ -29,6 +29,59 @@ class Notion:
 		raise Exception(response)
 
 
+	# def preQuery(self, pid, name=None, path=None, files=None, size=None, mtime=None, root=None, subs=None):
+
+	# 	query = {
+	# 		"parent": { "database_id": self.dbId },
+	# 		"properties": {}
+	# 	}
+
+	# 	if path:
+	# 		query['properties']['Path'] = {
+	# 			'type': 'rich_text',
+ #                'rich_text': [
+ #                    {
+ #                        'type': 'text',
+ #                        'text': {
+ #                            'content': path,
+ #                        },
+ #                    }
+ #                ]
+	# 		}
+
+	# 	if files:
+	# 		query['properties']['Files'] = {
+	# 			'type': 'number',
+	# 			'number': files
+	# 		}
+
+	# 	if size:
+	# 		query['properties']['Size'] = {
+	# 			'type': 'number',
+	# 			'number': size
+	# 		}
+
+	# 	if mtime:
+	# 		query['properties']['Mtime'] = {
+	# 			'type': 'number',
+	# 			'number': mtime
+	# 		}
+
+	# 	if root and len(root) > 0:
+	# 		query['properties']['Root'] = {
+	# 			'type': 'relation',
+	# 			'relation': root
+	# 		}
+
+	# 	if subs and len(subs) > 0:
+	# 		query['properties']['Sub'] = {
+	# 			'type': 'relation',
+	# 			'relation': subs
+	# 		}
+
+	# 	return query
+
+
 	def getDatabase(self, id):
 		url = 'https://api.notion.com/v1/databases/' + id + '/query'
 		response = requests.post(url, headers=self.headers)
@@ -72,7 +125,7 @@ class Notion:
 		return result
 
 
-	def addPage(self, name, path=None, files=None, size=None, mtime=None, pid=None, childs=None):
+	def addPage(self, name, path=None, files=None, fmod=None, size=None, mtime=None, pid=None, childs=None, status=None):
 
 		url = "https://api.notion.com/v1/pages"
 		query = {
@@ -113,6 +166,10 @@ class Notion:
 			                    "type": "number",
 								"number": mtime
 			                },
+			                '_fmod': {
+			                	'type': 'number',
+			                	'number': fmod
+			                },
 			                "Root": {
 			                    "type": "relation",
 			                    "relation": [],
@@ -121,6 +178,12 @@ class Notion:
 			                    "type": "relation",
 			                    "relation": [],
 			                },
+			                'Status': {
+			                	'type': 'status',
+			                	'status': {
+			                		'name': status
+			                	}
+			                }
 			            }
 		}
 
@@ -132,7 +195,7 @@ class Notion:
 		return response
 
 
-	def update(self, pid, path=None, files=None, size=None, mtime=None, root=None, childs=None):
+	def update(self, pid, path=None, files=None, fmod=None, size=None, mtime=None, root=None, childs=None, status=None):
 
 		query = {
 			"parent": { "database_id": self.dbId },
@@ -170,6 +233,13 @@ class Notion:
 				'number': mtime
 			}
 
+		if fmod:
+			if fmod == 0: fmod = 0.00001
+			query['properties']['_fmod'] = {
+				'type': 'number',
+				'number': fmod
+			}
+
 		if root and len(root) > 0:
 			query['properties']['Root'] = {
 				'type': 'relation',
@@ -180,6 +250,14 @@ class Notion:
 			query['properties']['Sub'] = {
 				'type': 'relation',
 				'relation': childs
+			}
+
+		if status:
+			query['properties']['Status'] = {
+				'type': 'status',
+				'status': {
+					'name': status,
+				}
 			}
 
 		url = 'https://api.notion.com/v1/pages/' + pid
