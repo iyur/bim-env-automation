@@ -15,7 +15,7 @@ class Notion:
 		    'Authorization': 'Bearer ' + self.token,
 		}
 
-		self.dbId = '71052cdf8b6248c1870e3c4422ab0274'
+		self.dbId = '7b839e6ec46e4b3a8cec093c88d85a61'
 
 
 	@staticmethod
@@ -158,11 +158,11 @@ class Notion:
 			                    "type": "number",
 								"number": files
 			                },
-			                "Size": {
+			                "_fsize": {
 			                    "type": "number",
 								"number": size
 			                },
-			                "Mtime": {
+			                "_mtime": {
 			                    "type": "number",
 								"number": mtime
 			                },
@@ -222,18 +222,19 @@ class Notion:
 			}
 
 		if size:
-			query['properties']['Size'] = {
+			query['properties']['_fsize'] = {
 				'type': 'number',
 				'number': size
 			}
 
 		if mtime:
-			query['properties']['Mtime'] = {
+			query['properties']['_mtime'] = {
 				'type': 'number',
 				'number': mtime
 			}
 
 		if fmod:
+			# notion workaround to keep zero
 			if fmod == 0: fmod = 0.00001
 			query['properties']['_fmod'] = {
 				'type': 'number',
@@ -279,7 +280,7 @@ class Notion:
 	# 	response = self.request2(url, query)
 
 
-	def request(self, url, query, retries=5, timeout=300, backoff=2):
+	def request(self, url, query, retries=5, timeout=300):
 
 		r = 0
 		d = 1
@@ -298,13 +299,12 @@ class Notion:
 				if r < retries:
 					print(f"Retrying in {d} seconds...")
 					time.sleep(d)
-					d *= backoff
 				else:
 					print("Max retries reached. Request failed.")
 
 			return None
 
-	def request2(self, url, query, retries=5, timeout=300, backoff=2):
+	def request2(self, url, query, retries=5, timeout=300):
 
 		r = 0
 		d = 1
@@ -323,8 +323,7 @@ class Notion:
 				if r < retries:
 					print(f"Retrying2 in {d} seconds...")
 					time.sleep(d)
-					d *= backoff
 				else:
 					print("Max retries reached. Request2 failed.")
 
-			return None	
+			return None
